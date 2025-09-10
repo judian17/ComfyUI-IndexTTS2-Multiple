@@ -20,4 +20,4 @@ For detailed instructions and parameter configurations, please refer to the exam
 
 ### Workflow Example
 
-![Workflow Example](\images\workflow.png)
+![Workflow Example](/images/workflow.png)
