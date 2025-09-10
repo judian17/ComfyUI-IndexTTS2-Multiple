@@ -2,22 +2,22 @@
 
 # ComfyUI IndexTTS2
 
-This is the ComfyUI IndexTTS2 node, a modified version based on [comfyui-indextts](https://github.com/billwuhao/ComfyUI_IndexTTS) (billwuhao/ComfyUI_IndexTTS: IndexTTS Voice Cloning: Supports two-person dialogue), which enables multi-person speech generation without a limit on the number of speakers.
+This is a modified ComfyUI IndexTTS2 node based on [ComfyUI_IndexTTS](https://github.com/billwuhao/ComfyUI_IndexTTS), enabling multi-person speech generation without limiting the number of speakers.
 
-This version supports the latest `transformers==4.38.2`, offers flexible model management, and is optimized to run on devices with as little as 6GB of VRAM.
+This version supports the latest `transformers==4.38.2`, provides more flexible model management, and can run on devices with as little as 6GB of VRAM.
 
 ## Model Paths & Dependency Installation
 
-For instructions on configuring model paths, setting audio paths, and installing special dependencies, please refer to the documentation of the original [comfyui-indextts](https://github.com/billwuhao/ComfyUI_IndexTTS) project.
+For instructions on configuring model paths, setting audio paths, and installing special dependencies, please refer to the documentation of the original project [ComfyUI_IndexTTS](https://github.com/billwuhao/ComfyUI_IndexTTS).
 
-**Please remember to star the original author's repository, [billwuhao](https://github.com/billwuhao)!**
+**Please don't forget to give the original project [ComfyUI_IndexTTS](https://github.com/billwuhao/ComfyUI_IndexTTS) a star!**
 
 ## How to Use
 
-Multi-person speech generation is achieved by providing multi-line text inputs, where each line represents the reference audio, script, and parameters for a specific speaker.
+Multi-person speech generation is achieved through multi-line text input, where each line represents the audio, script, and related parameters for one speaker.
 
-For detailed instructions and parameter configurations, please refer to the example workflow `\workflow-examples\indextts2.json`, which includes comprehensive annotations and node descriptions.
+For detailed usage instructions and parameter configurations, please refer to the example workflow file [indextts2.json](workflow-examples/indextts2.json) included in the project, which contains detailed comments and node explanations.
 
 ### Workflow Example
 
-![Workflow Example](/images/workflow.png)
+![Workflow Example](images/workflow.png)
