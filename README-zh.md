@@ -20,4 +20,4 @@
 
 ### 工作流示例
 
-![Workflow Example](\images\workflow.png)
+![Workflow Example](/images/workflow.png)
