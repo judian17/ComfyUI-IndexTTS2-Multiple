@@ -1,3 +1,5 @@
+[中文版说明](README-zh.md)
+
 \# ComfyUI IndexTTS2
 
 
