@@ -1,6 +1,5 @@
-# indextts2_pipeline.py (已添加调试信息)
+# indextts2_pipeline.py (已修复缓存生成错误)
 
-# ... (imports and path definitions remain the same) ...
 import os
 import time
 import librosa
@@ -98,11 +97,21 @@ class IndexTTS2_Pipeline:
         ckpt_path = os.path.join(campplus_path, "campplus_cn_common.bin")
         self.campplus_model.load_state_dict(torch.load(ckpt_path, map_location="cpu"))
         self.campplus_model = self.campplus_model.to(self.device).eval()
+
+        # --- FIX START: Load s2mel here as it's needed for prompt creation ---
+        print("    [DEBUG] Loading s2mel model for prompt generation dependency...")
+        self.s2mel = MyModel(self.cfg.s2mel, use_gpt_latent=True)
+        load_checkpoint2(self.s2mel, None, os.path.join(model_path_v2, self.cfg.s2mel_checkpoint), load_only_params=True, ignore_modules=[])
+        self.s2mel = self.s2mel.to(self.device).eval()
+        # --- FIX END ---
+
         print("    [DEBUG] Stage A Models LOADED.")
 
     def unload_prompt_models(self):
         print("    [DEBUG] Unloading Stage A Models...")
-        self._unload_models(['extract_features', 'semantic_model', 'semantic_codec', 'campplus_model', 'semantic_mean', 'semantic_std'])
+        # --- FIX START: Add s2mel to the unload list for Stage A ---
+        self._unload_models(['extract_features', 'semantic_model', 'semantic_codec', 'campplus_model', 'semantic_mean', 'semantic_std', 's2mel'])
+        # --- FIX END ---
         print("    [DEBUG] Stage A Models UNLOADED.")
 
     def load_generation_models(self):
@@ -135,19 +144,27 @@ class IndexTTS2_Pipeline:
         print("    [DEBUG] Stage B Models UNLOADED.")
         
     def load_decoding_models(self):
-        if self.s2mel is not None:
+        # --- FIX START: Adjust loaded check and ensure s2mel is present ---
+        if self.bigvgan is not None: # Check for bigvgan as the indicator for this stage now
             print("    [DEBUG] Stage C models already loaded. Skipping.")
             return
         print("    [DEBUG] Loading Stage C: Waveform Decoding Models...")
+        
         if self.semantic_codec is None:
             print("    [DEBUG] semantic_codec is needed for decoding, loading it now.")
             self.semantic_codec = build_semantic_codec(self.cfg.semantic_codec)
             ckpt = os.path.join(maskgct_path, "semantic_codec", "model.safetensors")
             safetensors.torch.load_model(self.semantic_codec, ckpt)
             self.semantic_codec = self.semantic_codec.to(self.device).eval()
-        self.s2mel = MyModel(self.cfg.s2mel, use_gpt_latent=True)
-        load_checkpoint2(self.s2mel, None, os.path.join(model_path_v2, self.cfg.s2mel_checkpoint), load_only_params=True, ignore_modules=[])
-        self.s2mel = self.s2mel.to(self.device).eval()
+
+        # If s2mel was unloaded by a memory strategy, reload it for decoding
+        if self.s2mel is None:
+            print("    [DEBUG] s2mel model not found, reloading for decoding stage...")
+            self.s2mel = MyModel(self.cfg.s2mel, use_gpt_latent=True)
+            load_checkpoint2(self.s2mel, None, os.path.join(model_path_v2, self.cfg.s2mel_checkpoint), load_only_params=True, ignore_modules=[])
+            self.s2mel = self.s2mel.to(self.device).eval()
+        # --- FIX END ---
+
         self.s2mel.models['cfm'].estimator.setup_caches(max_batch_size=1, max_seq_length=8192)
         self.bigvgan = bigvgan.BigVGAN.from_pretrained(bigvgan_path).to(self.device)
         self.bigvgan.remove_weight_norm()
@@ -170,7 +187,6 @@ class IndexTTS2_Pipeline:
         self.unload_generation_models()
         self.unload_decoding_models()
 
-    # ... The rest of the file (get_emb, process_speaker_audio, generate_latents, decode_latents, helpers) remains unchanged from the last complete version ...
     @torch.no_grad()
     def get_emb(self, input_features, attention_mask):
         vq_emb = self.semantic_model(input_features=input_features, attention_mask=attention_mask, output_hidden_states=True)
@@ -179,7 +195,6 @@ class IndexTTS2_Pipeline:
 
     @torch.no_grad()
     def process_speaker_audio(self, audio_path):
-        # self.load_prompt_models() # This is now called from the node logic
         audio, sr = librosa.load(audio_path, sr=None)
         audio_t = torch.from_numpy(audio).float().unsqueeze(0)
         audio_22k = torchaudio.transforms.Resample(sr, 22050)(audio_t).to(self.device)
@@ -198,7 +213,6 @@ class IndexTTS2_Pipeline:
 
     @torch.no_grad()
     def generate_latents(self, speaker_prompt, text, emotion_params, generation_params):
-        # self.load_generation_models() # This is now called from the node logic
         spk_cond_emb = speaker_prompt["spk_cond_emb"].to(self.device)
         style = speaker_prompt["style"].to(self.device)
         
@@ -266,7 +280,6 @@ class IndexTTS2_Pipeline:
     
     @torch.no_grad()
     def decode_latents(self, speaker_prompt, all_latents_data):
-        # self.load_decoding_models() # This is now called from the node logic
         prompt_condition = speaker_prompt["prompt_condition"].to(self.device)
         ref_mel = speaker_prompt["ref_mel"].to(self.device)
         style = speaker_prompt["style"].to(self.device)
