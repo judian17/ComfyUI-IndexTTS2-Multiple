@@ -21,3 +21,5 @@ For detailed usage instructions and parameter configurations, please refer to th
 ### Workflow Example
 
 ![Workflow Example](images/workflow.png)
+
+![Workflow Example](/images/workflow2.png)
