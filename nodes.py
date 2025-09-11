@@ -1,9 +1,10 @@
-# nodes.py (已更新为中英双语注释)
+# nodes.py (已更新为中英双语注释并优化单人生成流程)
 
 import torch
 import os
 import ast
 import time
+import re # 为优化输入逻辑而添加
 
 from . import indextts2_pipeline as pipeline
 from . import utils
@@ -15,11 +16,11 @@ class IndexTTS2_Dialogue_Studio:
             "required": {
                 "speaker_map": ("STRING", {
                     "multiline": True, "default": "[1]: speaker_1.wav\n[2]: speaker_2.wav",
-                    "tooltip": "说话人映射表 (Speaker Map)\n将说话人ID映射到 `models/TTS/speakers/`中的音频文件 (Maps speaker IDs to audio files in `models/TTS/speakers/`).\n格式 (Format): `[ID]: filename.wav` 每行一个 (one per line)."
+                    "tooltip": "说话人映射表 (Speaker Map)\n将说话人ID映射到 `models/TTS/speakers/`中的音频文件 (Maps speaker IDs to audio files in `models/TTS/speakers/`).\n格式 (Format): `[ID]: filename.wav` 每行一个 (one per line).\n单人生成时可省略 `[1]:` (For single speaker, `[1]:` is optional)."
                 }),
                 "script": ("STRING", {
                     "multiline": True, "default": "[1]: This is the first speaker, with a neutral tone.\n[2]: And this is the second speaker, sounding a bit more excited!",
-                    "tooltip": "对话脚本 (Script)\n对话内容 (The dialogue content).\n格式 (Format): `[ID] Text content` 每行一句 (one per line). 注意: 没有冒号 (Note: No colon)."
+                    "tooltip": "对话脚本 (Script)\n对话内容 (The dialogue content).\n格式 (Format): `[ID] Text content` 每行一句 (one per line). 注意: 没有冒号 (Note: No colon).\n单人生成时可省略 `[1]` (For single speaker, `[1]` is optional)."
                 }),
                 "precision": (["fp16", "fp32"], {"default": "fp16"}),
                 "model_unload_strategy": (["Staged (Balanced VRAM)", "Ultimate (Lowest VRAM)", "No Unloading"], {
@@ -41,7 +42,7 @@ class IndexTTS2_Dialogue_Studio:
                 }),
                 "emotion_text_map": ("STRING", {
                     "multiline": True, "default": "[1]: A standard, narrative voice without any strong emotion.\n[2]: Spoken with a bright and cheerful tone, full of positive energy.\n[3]: A quiet and somber voice, tinged with a hint of sadness.",
-                    "tooltip": "情感描述文本 (Emotion Text Map)\n为LLM提供详细情感描述 (Provides detailed emotional descriptions for the LLM). 支持中英混合 (Supports Chinese/English mix).\n格式 (Format): `[ID]: A detailed emotional description.`\n示例 (Example): `[2]: He spoke with a sad, trembling voice, 声音很小.`"
+                    "tooltip": "情感描述文本 (Emotion Text Map)\n为LLM提供详细情感描述 (Provides detailed emotional descriptions for the LLM). 支持中英混合 (Supports Chinese/English mix).\n格式 (Format): `[ID]: A detailed emotional description.`"
                 }),
                 "emotion_vector_map": ("STRING", {
                     "multiline": True, "default": "[1]: [0,0,0,0,0,0,0,1.0]\n[2]: [0,0,0,0,0,0,0,1.0]",
@@ -65,6 +66,31 @@ class IndexTTS2_Dialogue_Studio:
     RETURN_TYPES = ("AUDIO",)
     FUNCTION = "generate_dialogue"
     CATEGORY = "🎤MW/MW-IndexTTS"
+
+    # --- 新增辅助函数 ---
+    def _preprocess_input(self, text_input, is_script=False):
+        """
+        自动格式化单人生成的输入，使其与多角色的解析逻辑兼容。
+        如果输入已经包含[ID]格式，则直接返回。
+        否则，为maps添加"[1]: "，为script添加"[1] "。
+        """
+        text_input = text_input.strip()
+        if not text_input:
+            return ""
+        
+        # 检查任何行是否以[ID]模式开头。如果是，则假定其格式正确。
+        if re.search(r'^\s*\[\d+\]', text_input, re.MULTILINE):
+            return text_input
+
+        # 如果未找到格式，则假定为单个说话人（ID 1）的输入。
+        lines = text_input.split('\n')
+        
+        # 脚本格式: "[1] The text" (无冒号)
+        # Map格式: "[1]: The value" (有冒号)
+        formatter = "[1] {}" if is_script else "[1]: {}"
+        
+        processed_lines = [formatter.format(line.strip()) for line in lines if line.strip()]
+        return '\n'.join(processed_lines)
 
     def _check_all_prompts_cached(self, speaker_map_text):
         speaker_map = utils.parse_key_value_map(speaker_map_text)
@@ -118,6 +144,14 @@ class IndexTTS2_Dialogue_Studio:
     def generate_dialogue(self, speaker_map, script, precision, model_unload_strategy, **kwargs):
         start_time = time.time()
         print(f"\n[IndexTTS2_NODE] Execution started with strategy: {model_unload_strategy}")
+        
+        # --- 优化逻辑：为单人生成模式自动补全ID ---
+        speaker_map = self._preprocess_input(speaker_map, is_script=False)
+        script = self._preprocess_input(script, is_script=True)
+        for key, value in kwargs.items():
+            if key.endswith("_map") and isinstance(value, str):
+                kwargs[key] = self._preprocess_input(value, is_script=False)
+        # --- 优化逻辑结束 ---
         
         generation_params = {k: kwargs[k] for k in ["top_k", "top_p", "temperature", "num_beams", "max_mel_tokens", "repetition_penalty"]}
         emo_maps = {
